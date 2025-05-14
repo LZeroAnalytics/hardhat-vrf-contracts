@@ -2,6 +2,9 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import * as dotenv from "dotenv";
 
+// Import tasks
+import "./scripts/vrfv2plus/test-randomness-request";
+
 // uncomment if using hardhat only, in this kurtosis project the env vars will be automatically injested from kurtosis
 dotenv.config();
 
