@@ -1,0 +1,54 @@
+import * as dotenv from "dotenv";
+import { validateAddress } from "./contract-utils";
+
+dotenv.config();
+
+export type EnvVars = {
+  PRIVATE_KEY: string;
+  RPC_URL: string;
+  DKG_KEY_ID: string;
+  LINK_TOKEN_ADDRESS: string;
+  LINK_NATIVE_TOKEN_FEED_ADDRESS: string;
+  // VRF V2 Deployment Config
+  USE_TEST_COORDINATOR?: string;
+  NETWORK_TYPE: string;
+  L1_FEE_CALCULATION_MODE?: string;
+  L1_FEE_COEFFICIENT?: string;
+  MIN_CONFIRMATIONS?: string;
+  MAX_GAS_LIMIT?: string;
+  STALENESS_SECONDS?: string;
+  GAS_AFTER_PAYMENT?: string;
+  FALLBACK_WEI_PER_UNIT_LINK?: string;
+  FULFILLMENT_FLAT_FEE_NATIVE_PPM?: string;
+  FULFILLMENT_FLAT_FEE_LINK_DISCOUNT_PPM?: string;
+  NATIVE_PREMIUM_PERCENTAGE?: string;
+  LINK_PREMIUM_PERCENTAGE?: string;
+  LINK_FUNDING_AMOUNT?: string;
+  NATIVE_FUNDING_AMOUNT?: string;
+  UNCOMPRESSED_VRF_KEY?: string;
+};
+// Helper function to get the deployment configuration with defaults
+export function getVRFV2PlusDeployConfig() {
+  const env = process.env as EnvVars;
+  
+  return {
+    USE_TEST_COORDINATOR: (env.USE_TEST_COORDINATOR || "false") === "true",
+    NETWORK_TYPE: env.NETWORK_TYPE || "ethereum",
+    L1_FEE_CALCULATION_MODE: parseInt(env.L1_FEE_CALCULATION_MODE || "0"),
+    L1_FEE_COEFFICIENT: parseInt(env.L1_FEE_COEFFICIENT || "0"),
+    MIN_CONFIRMATIONS: parseInt(env.MIN_CONFIRMATIONS || "3"),
+    MAX_GAS_LIMIT: parseInt(env.MAX_GAS_LIMIT || "2500000"),
+    STALENESS_SECONDS: parseInt(env.STALENESS_SECONDS || "86400"),
+    GAS_AFTER_PAYMENT: parseInt(env.GAS_AFTER_PAYMENT || "50000"),
+    FALLBACK_WEI_PER_UNIT_LINK: env.FALLBACK_WEI_PER_UNIT_LINK || "60000000000000000", // 0.06 ETH per LINK
+    FULFILLMENT_FLAT_FEE_NATIVE_PPM: parseInt(env.FULFILLMENT_FLAT_FEE_NATIVE_PPM || "100000"),
+    FULFILLMENT_FLAT_FEE_LINK_DISCOUNT_PPM: parseInt(env.FULFILLMENT_FLAT_FEE_LINK_DISCOUNT_PPM || "50000"),
+    NATIVE_PREMIUM_PERCENTAGE: parseInt(env.NATIVE_PREMIUM_PERCENTAGE || "0"),
+    LINK_PREMIUM_PERCENTAGE: parseInt(env.LINK_PREMIUM_PERCENTAGE || "0"),
+    LINK_TOKEN_ADDRESS: env.LINK_TOKEN_ADDRESS || "",
+    LINK_NATIVE_TOKEN_FEED_ADDRESS: env.LINK_NATIVE_TOKEN_FEED_ADDRESS || "",
+    LINK_FUNDING_AMOUNT: env.LINK_FUNDING_AMOUNT || "10",
+    NATIVE_FUNDING_AMOUNT: env.NATIVE_FUNDING_AMOUNT || "1",
+    UNCOMPRESSED_VRF_KEY: env.UNCOMPRESSED_VRF_KEY || "",
+  };
+} 
