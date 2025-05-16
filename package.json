@@ -5,7 +5,7 @@
   "main": "index.js",
   "license": "MIT",
   "devDependencies": {
-    "@typechain/ethers-v6": "^0.5.0",
+    "@typechain/ethers-v6":"^0.5.0",
     "@typechain/hardhat": "^9.0.0",
     "@types/node": ">=18.0.0",
     "ts-node": ">=8.0.0",

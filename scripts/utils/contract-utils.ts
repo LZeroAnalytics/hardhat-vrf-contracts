@@ -1,5 +1,4 @@
 import { ethers } from "hardhat";
-import type { Contract, ContractTransaction } from "ethers";
 import fs from "fs";
 import path from "path";
 
@@ -68,10 +67,10 @@ export function validateAddress(address: string, name: string): void {
   }
 }
 
-export async function runTxWithErrorParser<T extends ContractTransaction>(
-  txPromise: Promise<T>,
-  contract: Contract
-): Promise<T> {
+export async function runTxWithErrorParser(
+  txPromise: Promise<object>,
+  contract: object
+): Promise<object> {
   
   try {
     return await txPromise;
