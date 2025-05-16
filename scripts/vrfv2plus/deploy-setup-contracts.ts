@@ -124,48 +124,12 @@ async function main() {
     await consumer.waitForDeployment();
     const consumerAddress = await consumer.getAddress();
     
-    // 10. Create subscription
-    console.log("Creating subscription...");
-    const createSubTx = await coordinator.createSubscription();
-    const createSubReceipt = await createSubTx.wait();
-    
-    // Get subscription ID from event logs
-    const subIdHex = createSubReceipt?.logs[0].topics[1];
-    const subId = BigInt(subIdHex || "0");
-    console.log(`Subscription created with ID: ${subId}`);
-    
-    // 11. Add consumers to subscription
-    console.log(`Adding consumer ${consumerAddress} to subscription ${subId}...`);
-    const addConsumerTx = await coordinator.addConsumer(subId, consumerAddress);
-    await addConsumerTx.wait();
-    console.log(`Consumer ${consumerAddress} added to subscription ${subId}`);
-    
-    // 12. Fund subscription with LINK
-    const linkFundingAmount = ethers.parseEther(config.LINK_FUNDING_AMOUNT);
-    console.log(`Funding subscription ${subId} with ${ethers.formatEther(linkFundingAmount)} LINK...`);
-    
-    // Encode subscription ID for transferAndCall
-    const encodedSubId = ethers.solidityPacked(["uint256"], [subId]);
-    
-    const fundLinkTx = await (linkToken as any).transferAndCall(
-      coordinatorAddress,
-      linkFundingAmount,
-      encodedSubId
-    );
-    await fundLinkTx.wait();
-    console.log(`Subscription ${subId} funded with ${ethers.formatEther(linkFundingAmount)} LINK`);
-    
-    // 13. Fund subscription with native token
-    const nativeFundingAmount = ethers.parseEther(config.NATIVE_FUNDING_AMOUNT);
-    console.log(`Funding subscription ${subId} with ${ethers.formatEther(nativeFundingAmount)} native tokens...`);
-    
-    const fundNativeTx = await coordinator.fundSubscriptionWithNative(
-      subId,
-      { value: nativeFundingAmount }
-    );
-    await fundNativeTx.wait();
-    console.log(`Subscription ${subId} funded with ${ethers.formatEther(nativeFundingAmount)} native tokens`);
-  
+    // 10 create subscritpitoin, add consumer and funding
+    console.log("Creating subscription, adding consumer and funding...");
+    const subTx = await consumer.createSubscriptionAndFund(2)
+    await subTx.wait()
+
+    const subId = await consumer.s_subId()
 
     const deployment: VRFDeployment = {
       contracts: {
@@ -180,8 +144,8 @@ async function main() {
       subscription: {
         id: subId.toString(),
         funded: {
-          link: ethers.formatEther(linkFundingAmount),
-          native: ethers.formatEther(nativeFundingAmount)
+          link: ethers.formatEther(2),
+          native: ethers.formatEther(0)
         },
         consumer: consumerAddress
       },

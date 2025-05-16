@@ -1,7 +1,6 @@
 // scripts/request-randomness.ts
 import { task } from "hardhat/config";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
-import { Log } from "ethers";
 
 task("request-randomness", "Request randomness from a VRF consumer contract")
   .addParam("consumer", "Address of the VRF consumer contract")
@@ -28,64 +27,54 @@ task("request-randomness", "Request randomness from a VRF consumer contract")
       console.log(`Minimum confirmations: ${minConfirmations}`);
       console.log(`Callback gas limit: ${callbackGasLimit}`);
       
-      const tx = await consumer.requestRandomWords(
+      const coordinator = await hre.ethers.getContractAt("VRFCoordinatorV2_5", taskArgs.coordinator);
+
+      const keyHash = await coordinator.s_provingKeyHashes(0)
+      const tx = await consumer.requestRandomness({
+        keyHash,
         subId, 
-        numWords,
-        minConfirmations,
+        requestConfirmations: 3,
         callbackGasLimit,
-        false // Don't use native payment
-      );
+        numWords,
+        extraArgs: "0x"
+      });
       
       const receipt = await tx.wait();
+
       if (!receipt) {
         throw new Error("Transaction failed");
       }
+      const requestId = tx.value;
+      console.log(`Random words requested successfully!`);
+      console.log(`Request ID: ${requestId}`);
       
-      // Find request ID from logs
-      const requestIdLog = receipt.logs
-        .map((log: Log) => {
-          try {
-            return consumer.interface.parseLog(log);
-          } catch (e) {
-            return null;
-          }
-        })
-        .find((log: any) => log?.name === "RandomWordsRequested");
+      // Wait for fulfillment
+      console.log(`Waiting for fulfillment...`);
+      const waitInterval = 5000; // 5 seconds
+      const timeout = 300000; // 5 minutes
+      let elapsed = 0;
       
-      if (requestIdLog) {
-        const requestId = requestIdLog.args[5]; // The request ID is the 6th argument in the event
-        console.log(`Random words requested successfully!`);
-        console.log(`Request ID: ${requestId}`);
+      while (elapsed < timeout) {
+        await new Promise(resolve => setTimeout(resolve, waitInterval));
+        elapsed += waitInterval;
         
-        // Wait for fulfillment
-        console.log(`Waiting for fulfillment...`);
-        const waitInterval = 5000; // 5 seconds
-        const timeout = 300000; // 5 minutes
-        let elapsed = 0;
-        
-        while (elapsed < timeout) {
-          await new Promise(resolve => setTimeout(resolve, waitInterval));
-          elapsed += waitInterval;
-          
-          try {
-            const fulfilled = await consumer.getRequestStatus(requestId);
-            if (fulfilled.fulfilled) {
-              console.log(`Request fulfilled!`);
-              console.log(`Random words: ${fulfilled.randomWords.map((w: bigint) => w.toString()).join(', ')}`);
-              return;
-            }
-          } catch (e) {
-            console.log(`Error checking fulfillment status: ${e}`);
+        try {
+          const req_id = await consumer.s_requestId();
+          const randomWords = await consumer.s_randomWords(0);
+          if (req_id === requestId) {
+            console.log(`Request fulfilled!`);
+            console.log(`Random words: ${randomWords}`);
+            return;
           }
-          
-          console.log(`Still waiting... ${elapsed / 1000}s elapsed`);
+        } catch (e) {
+          console.log(`Error checking fulfillment status: ${e}`);
         }
         
-        console.log(`Timeout waiting for fulfillment. The request may still be fulfilled later.`);
-      } else {
-        console.log(`Transaction confirmed but couldn't find request ID in logs.`);
-      }
+        console.log(`Still waiting... ${elapsed / 1000}s elapsed`);
+
       
+      console.log(`Timeout waiting for fulfillment. The request may still be fulfilled later.`);
+      }
     } catch (error) {
       console.error("Error requesting randomness:", error);
       throw error;

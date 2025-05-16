@@ -1,11 +1,11 @@
 import * as dotenv from "dotenv";
-import { validateAddress } from "./contract-utils";
 
 dotenv.config();
 
 export type EnvVars = {
   PRIVATE_KEY: string;
   RPC_URL: string;
+  CHAIN_ID: string;
   DKG_KEY_ID: string;
   LINK_TOKEN_ADDRESS: string;
   LINK_NATIVE_TOKEN_FEED_ADDRESS: string;

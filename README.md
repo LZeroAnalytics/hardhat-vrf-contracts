@@ -181,43 +181,20 @@ Options:
 <details>
 <summary> Consumer Contract Setup</summary>
 
-Deploy and test the VRF consumer contract to verify the random number generation:
+Deploy and test the VRF consumers contract to verify the random number generation.
 
-```bash
-# For VRFV2Plus
-npx hardhat run scripts/vrf-consumer.ts --network blocktopus
+**VRF Implementation Comparison** 📊
 
-# For OCR2VRF
-npx hardhat run scripts/ocr2vrf-consumer.ts --network blocktopus
-```
+| Feature | VRFV2Plus | OCR2VRF |
+|---------|-----------|---------|
+| Delivery Model | Push-based (automatic) | Pull-based (manual retrieval) |
+| Flow Pattern | Request → Automatic callback | Beacon emission → Manual redemption |
+| User Experience | Simpler, single transaction flow | Two-step process requiring monitoring |
+| Request Function | `requestRandomWords()` | `redeemRandomness()` |
+| Behind the Scenes | Direct oracle response | Distributed MPC-based beacon emissions |
+| Best For | Most general use cases | High-security applications needing same randomness across multiple consumers |
 
-The test flow follows these steps:
-
-1. **Initial Setup** 🔧
-   ```solidity
-   // VRFV2Plus
-   constructor(
-       address vrfCoordinator,
-       address linkToken
-   )
-   
-   // OCR2VRF
-   constructor(
-       address vrfBeacon,
-       address linkToken
-   )
-   ```
-   - Deploys consumer contract
-   - Links to appropriate coordinator
-   - Sets up configuration parameters
-
-2. **Subscription Management** 💳
-   - Creates new VRF subscription (VRFV2Plus only)
-   - Funds it with LINK tokens
-   - Adds consumer contract as authorized user
-   - Verifies subscription details and balances
-
-3. **Random Number Request** 🎲
+**Random Number Request** 🎲
    ```solidity
    // VRFV2Plus
    requestRandomWords()
@@ -225,13 +202,9 @@ The test flow follows these steps:
    // OCR2VRF
    redeemRandomness()
    ```
-   - VRFV2Plus: Requests random words via subscription
-   - OCR2VRF: Redeems randomness from beacon emissions
+   - VRFV2Plus: Requests random words via subscription, automatically delivers result via callback
+   - OCR2VRF: Redeems randomness from beacon emissions, requires monitoring for available randomness
 
-4. **Result Verification** ✅
-   - Waits for oracle response
-   - Verifies random values received
-   - Checks randomness properties
 </details>
 
 <details>
