@@ -123,13 +123,17 @@ async function main() {
     const consumer = await Consumer.deploy(coordinatorAddress, linkTokenAddress);
     await consumer.waitForDeployment();
     const consumerAddress = await consumer.getAddress();
-    
+
     // 10 create subscritpitoin, add consumer and funding
+    // Approve the consumer contract to spend your LINK
+/*     const approveTx = await linkToken.approve(consumerAddress, ethers.parseEther("2"));
+    await approveTx.wait();
+
     console.log("Creating subscription, adding consumer and funding...");
     const subTx = await consumer.createSubscriptionAndFund(2)
     await subTx.wait()
 
-    const subId = await consumer.s_subId()
+    const subId = await consumer.s_subId() */
 
     const deployment: VRFDeployment = {
       contracts: {
@@ -142,7 +146,7 @@ async function main() {
         testConsumer: consumerAddress
       },
       subscription: {
-        id: subId.toString(),
+        id: "0",
         funded: {
           link: ethers.formatEther(2),
           native: ethers.formatEther(0)
@@ -162,8 +166,8 @@ async function main() {
     console.log(JSON.stringify(deployment, null, 2));
     console.log("DEPLOYMENT_JSON_END");
     
-    console.log("\nExample commands to interact with contracts:");
-        console.log(`Request randomness: npx hardhat request-randomness --consumer ${consumerAddress} --subid ${subId} --network bloctopus`);
+    //console.log("\nExample commands to interact with contracts:");
+    //console.log(`Request randomness: npx hardhat request-randomness --consumer ${consumerAddress} --subid ${subId} --network bloctopus`);
     
     return deployment;
   } catch (error) {
