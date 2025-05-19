@@ -25,7 +25,7 @@ const config: HardhatUserConfig = {
   networks: {
     bloctopus: {
       url: process.env.RPC_URL!,
-      chainId: parseInt(process.env.CHAIN_ID!),
+      chainId: process.env.CHAIN_ID ? parseInt(process.env.CHAIN_ID) : undefined,
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     }
   },
