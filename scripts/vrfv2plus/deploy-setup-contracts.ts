@@ -114,7 +114,8 @@ async function main() {
     // 9. Set VRF key from uncompressed key
     console.log("Setting VRF key from uncompressed key...");
     const { coordinates } = encodeOnChainVRFProvingKey(config.UNCOMPRESSED_VRF_KEY);
-    const setVRFKeyTx = await coordinator.registerProvingKey(coordinates, config.MAX_GAS_LIMIT);
+    const LANE_CAP = ethers.parseUnits("500", "gwei");
+    const setVRFKeyTx = await coordinator.registerProvingKey(coordinates, LANE_CAP);
     await setVRFKeyTx.wait();
     
     // 9. Deploy consumer
