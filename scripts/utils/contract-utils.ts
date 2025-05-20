@@ -143,47 +143,29 @@ export function saveDeployment(deployment: VRFDeployment, filename: string): voi
 }
 
 // Function to encode public keys for the DKG system
-export function encodeOnChainVRFProvingKey(uncompressedPubKey: string): { 
-  keyHash: string, 
-  compressed: string,
-  coordinates: [string, string]
-} {
-  // Convert uncompressed public key to compressed form for on-chain registration
-  // Uncompressed key is in format: 0x04 + x + y or just x + y
-  let pubKeyBytes: string;
-  
-  if (uncompressedPubKey.startsWith("0x")) {
-    pubKeyBytes = uncompressedPubKey.slice(2);
-  } else {
-    pubKeyBytes = uncompressedPubKey;
-  }
-  
-  // Ensure the key begins with '04' for uncompressed format if not already
-  if (!pubKeyBytes.startsWith("04")) {
-    pubKeyBytes = "04" + pubKeyBytes;
-  }
-  
-  // Extract x and y
-  const xHex = "0x" + pubKeyBytes.slice(2, 66);
-  const yHex = "0x" + pubKeyBytes.slice(66, 130);
-  
-  // Convert to bigint
-  const x = BigInt(xHex);
-  const y = BigInt(yHex);
-  
-  // Determine prefix (02 if y is even, 03 if y is odd)
-  const prefix = y % 2n === 0n ? "02" : "03";
-  
-  // Create compressed key
-  const compressedKeyHex = prefix + pubKeyBytes.slice(2, 66);
-  const compressedKey = "0x" + compressedKeyHex;
-  
-  // Calculate key hash
-  const keyHash = ethers.keccak256(compressedKey);
-  
-  return { 
-    keyHash, 
-    compressed: compressedKey,
-    coordinates: [xHex, yHex]
+export function encodeOnChainVRFProvingKey(uncompressed: string) {
+  // drop 0x & optional 04 prefix
+  let hex = uncompressed.replace(/^0x/, "");
+  if (hex.startsWith("04")) hex = hex.slice(2);
+
+  if (hex.length !== 128) throw new Error("uncompressed key must be 64 bytes");
+
+  const xHex = "0x" + hex.slice(0, 64);
+  const yHex = "0x" + hex.slice(64, 128);
+
+  // compressed key (useful for off-chain debugging/tools)
+  const yBig = BigInt(yHex);
+  const prefix = yBig & 1n ? "03" : "02";
+  const compressed = "0x" + prefix + hex.slice(0, 64);
+
+  const keyHash = ethers.keccak256(
+    ethers.solidityPacked(["uint256", "uint256"], [xHex, yHex])
+  );
+
+  // coordinates array ready for registerProvingKey(uint256[2])
+  return {
+    keyHash,
+    compressed,
+    coordinates: [xHex, yHex] as [string, string],
   };
-} 
+}
