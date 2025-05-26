@@ -4,6 +4,8 @@ import * as dotenv from "dotenv";
 
 // Import tasks
 import "./scripts/vrfv2plus/test-randomness-request";
+import "./scripts/vrfv2plus/test-randomness-request-2";
+
 
 // uncomment if using hardhat only, in this kurtosis project the env vars will be automatically injested from kurtosis
 dotenv.config();
