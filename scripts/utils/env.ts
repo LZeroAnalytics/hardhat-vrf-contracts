@@ -36,7 +36,7 @@ export function getVRFV2PlusDeployConfig() {
     NETWORK_TYPE: env.NETWORK_TYPE || "ethereum",
     L1_FEE_CALCULATION_MODE: parseInt(env.L1_FEE_CALCULATION_MODE || "0"),
     L1_FEE_COEFFICIENT: parseInt(env.L1_FEE_COEFFICIENT || "0"),
-    MIN_CONFIRMATIONS: parseInt(env.MIN_CONFIRMATIONS || "3"),
+    MIN_CONFIRMATIONS: parseInt(env.MIN_CONFIRMATIONS || "1"),
     MAX_GAS_LIMIT: parseInt(env.MAX_GAS_LIMIT || "2500000"),
     STALENESS_SECONDS: parseInt(env.STALENESS_SECONDS || "3600"),
     GAS_AFTER_PAYMENT: parseInt(env.GAS_AFTER_PAYMENT || "50000"),
