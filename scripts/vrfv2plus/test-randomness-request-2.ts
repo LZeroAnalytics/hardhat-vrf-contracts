@@ -3,7 +3,7 @@ import { task } from "hardhat/config";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import "@nomicfoundation/hardhat-ethers";
 
-task("request-randomness", "Request randomness from a VRF consumer contract")
+task("request-randomness-2", "Request randomness from a VRF consumer contract")
   .addParam("coordinator", "Address of the VRF coordinator contract")
   .addParam("linktoken", "Address of the link token contract")
   .addOptionalParam("numwords", "Number of random words to request", "1")
@@ -12,8 +12,6 @@ task("request-randomness", "Request randomness from a VRF consumer contract")
   .setAction(async (taskArgs, hre: HardhatRuntimeEnvironment) => {
     try {
       const numWords = parseInt(taskArgs.numwords);
-      const minConfirmations = parseInt(taskArgs.confirmations);
-      const callbackGasLimit = parseInt(taskArgs.callbackgas);
       const coordinatorAddress = taskArgs.coordinator;
       const linkTokenAddress = taskArgs.linktoken;
 
@@ -527,10 +525,19 @@ task("request-randomness", "Request randomness from a VRF consumer contract")
             }
           }
         }
-        
+        let keyHash;
+        try {
+          keyHash = await coordinator.s_provingKeyHashes(0);
+          console.log(`Got key hash: ${keyHash}`);
+        } catch (error: any) {
+          console.log(`Couldn't get key hash from s_provingKeyHashes, using fallback...`);
+          // Fallback to a well-known key hash or get it another way
+          keyHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
+          console.log(`Using fallback key hash: ${keyHash}`);
+        }
         // Deploy a consumer
         console.log(`\n==== STEP 3: Deploy VRF consumer ====`);
-        const consumer = await (await hre.ethers.getContractFactory("VRFConsumerV2Plus")).deploy(coordinatorAddress, linkTokenAddress);
+        const consumer = await (await hre.ethers.getContractFactory("VRFD20")).deploy(subId, coordinatorAddress, keyHash);
         await consumer.waitForDeployment();
         const consumerAddress = await consumer.getAddress();
         console.log(`Consumer deployed at: ${consumerAddress}`);
@@ -633,7 +640,7 @@ task("request-randomness", "Request randomness from a VRF consumer contract")
         // Transfer and call
         const fundTx = await linkToken.transferAndCall(
           coordinatorAddress, 
-          hre.ethers.parseUnits("2", 18),
+          hre.ethers.parseUnits("100", 18),
           encodedSubId
         );
         console.log(`Transaction sent: ${fundTx.hash}`);
@@ -644,215 +651,65 @@ task("request-randomness", "Request randomness from a VRF consumer contract")
         console.log(`\n==== STEP 6: Request randomness ====`);
         console.log(`Getting key hash...`);
         // Some coordinators store key hashes in s_provingKeyHashes array
-        let keyHash;
-        try {
-          keyHash = await coordinator.s_provingKeyHashes(0);
-          console.log(`Got key hash: ${keyHash}`);
-        } catch (error: any) {
-          console.log(`Couldn't get key hash from s_provingKeyHashes, using fallback...`);
-          // Fallback to a well-known key hash or get it another way
-          keyHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
-          console.log(`Using fallback key hash: ${keyHash}`);
-        }
+       
         
         console.log(`Requesting ${numWords} random words...`);
-        console.log(`Callback gas limit: ${callbackGasLimit}`);
         
-        const requestTx = await consumer.requestRandomness({
-          keyHash,
-          subId,
-          requestConfirmations: minConfirmations,
-          callbackGasLimit,
-          numWords,
-          extraArgs: "0x"
-        });
+        // Store the roller address for checking results later
+        console.log(`Rolling dice for address: ${signerAddress}`);
+
+        // Call the rollDice function with the roller address
+        const requestTx = await consumer.rollDice(signerAddress);
         
         console.log(`Request sent: ${requestTx.hash}`);
-        await requestTx.wait();
+        const receipttx = await requestTx.wait();
         console.log(`Request transaction mined!`);
-        
-        const requestId = await consumer.s_requestId();
-        console.log(`Request ID: ${requestId}`);
-        
-        const dummyWords = Array(numWords).fill(hre.ethers.randomBytes(32));
-        try {
-          const needed = await consumer.rawFulfillRandomWords.estimateGas(requestId, dummyWords);
-          console.log(`Estimated gas needed for fulfillment: ${needed}`);
-        } catch (error: any) {
-          console.log(`Could not estimate callback gas: ${error.message}`);
+
+        // Get requestId from emitted event
+        let requestId: bigint;
+        const diceRolledEvent = receipttx?.logs.find(log => {
+          // Check if this is a DiceRolled event from our consumer
+          return log.address.toLowerCase() === consumerAddress.toLowerCase() &&
+                 log.topics[0] === '0x4f2e3ef0829af24a5214761a2ede4d31c6a09ac580bf5da4e8bc394fb2603d1f'; // DiceRolled topic hash
+        });
+
+        if (diceRolledEvent) {
+          // Extract requestId from the first indexed parameter
+          requestId = BigInt(diceRolledEvent.topics[1]);
+          console.log(`Request ID from DiceRolled event: ${requestId}`);
+        } else {
+          console.log(`Warning: DiceRolled event not found in transaction receipt.`);
+          // Try to get from RandomWordsRequested event instead
+          const randomWordsRequestedEvent = receipttx?.logs.find(log => {
+            return log.address.toLowerCase() === coordinatorAddress.toLowerCase() &&
+                   log.topics[0] === '0x63373d1c4696214b898952999c9aaec57dac1ee2723cec59bea6888f489a9772'; // RandomWordsRequested topic
+          });
+          
+          if (randomWordsRequestedEvent) {
+            requestId = BigInt(randomWordsRequestedEvent.topics[1]);
+            console.log(`Request ID from RandomWordsRequested event: ${requestId}`);
+          } else {
+            console.log(`Warning: Could not find requestId in transaction logs`);
+            requestId = 0n; // Default value if we can't find it
+          }
         }
 
-        // Check for the RandomWordsRequested event in the request transaction receipt
-        console.log(`\n==== CHECKING EVENTS FROM REQUEST TX ====`);
+        // Replace direct storage check section with house() function check
+        console.log(`\n==== DIRECTLY CHECKING CONTRACT STATUS ====`);
+        
+        // Try to check dice roll status via house() function
         try {
-          const requestReceipt = await provider.send("eth_getTransactionReceipt", [requestTx.hash]);
-          if (requestReceipt && requestReceipt.logs) {
-            console.log(`Found ${requestReceipt.logs.length} logs in the request transaction`);
-            
-            // Check if any logs are from the coordinator
-            for (const log of requestReceipt.logs) {
-              if (log.address.toLowerCase() === coordinatorAddress.toLowerCase()) {
-                console.log(`Found log from coordinator at index ${requestReceipt.logs.indexOf(log)}`);
-                
-                // Check for RandomWordsRequested event (topic[0])
-                if (log.topics[0] === '0x63373d1c4696214b898952999c9aaec57dac1ee2723cec59bea6888f489a9772') {
-                  console.log(`✅ Found RandomWordsRequested event!`);
-                  
-                  // The request ID is usually in topic[1]
-                  const eventRequestId = log.topics[1];
-                  console.log(`Request ID from event: ${eventRequestId}`);
-                }
-                
-                // Check for RandomWordsFulfilled event (indicating in-tx fulfillment)
-                if (log.topics[0] === '0x7dffc5ae5ee4e2e4df1651cf6ad329a73cebdb728f38e8f424e4c59c26a345e5') {
-                  console.log(`✅ Found RandomWordsFulfilled event in the same transaction!`);
-                  console.log(`This means the request was fulfilled immediately`);
-                  
-                  // The request ID is usually in topic[1]
-                  const fulfilledRequestId = log.topics[1];
-                  console.log(`Fulfilled Request ID: ${fulfilledRequestId}`);
-                  
-                  // Try to decode the randomness from the data field if it exists
-                  if (log.data && log.data !== '0x') {
-                    try {
-                      const abiCoder = hre.ethers.AbiCoder.defaultAbiCoder();
-                      const decodedData = abiCoder.decode(['uint256', 'uint256[]'], log.data);
-                      console.log(`Success payment: ${decodedData[0]}`);
-                      console.log(`Random words: ${decodedData[1]}`);
-                    } catch (e) {
-                      console.log(`Could not decode fulfillment data: ${e}`);
-                    }
-                  }
-                }
-              }
-              
-              // Check if any logs are from the consumer contract
-              if (log.address.toLowerCase() === consumerAddress.toLowerCase()) {
-                console.log(`Found log from consumer contract at index ${requestReceipt.logs.indexOf(log)}`);
-              }
-            }
-          }
-          
-          // Now let's check the blockchain for any recent fulfillment events
-          console.log(`\nChecking for recent fulfillment events...`);
-          
-          // Get current block number
-          const currentBlock = await provider.send("eth_blockNumber", []);
-          const currentBlockNumber = parseInt(currentBlock, 16);
-          console.log(`Current block: ${currentBlockNumber}`);
-          
-          // Look for fulfillment events in recent blocks
-          const fromBlock = Math.max(currentBlockNumber - 10, 0); // Last 10 blocks
-          
-          const fulfillmentLogs = await provider.send("eth_getLogs", [{
-            fromBlock: `0x${fromBlock.toString(16)}`,
-            toBlock: "latest",
-            address: coordinatorAddress,
-            topics: [
-              '0x7dffc5ae5ee4e2e4df1651cf6ad329a73cebdb728f38e8f424e4c59c26a345e5', // RandomWordsFulfilled event signature
-            ]
-          }]);
-          
-          if (fulfillmentLogs && fulfillmentLogs.length > 0) {
-            console.log(`Found ${fulfillmentLogs.length} fulfillment events in recent blocks`);
-            
-            // Check if any of them match our request ID
-            for (const log of fulfillmentLogs) {
-              // Convert our requestId to the format in the logs
-              const requestIdHex = `0x${requestId.toString(16).padStart(64, '0')}`;
-              
-              if (log.topics[1] === requestIdHex) {
-                console.log(`✅ Found fulfillment event for our request ID!`);
-                console.log(`Block number: ${parseInt(log.blockNumber, 16)}`);
-                console.log(`Transaction hash: ${log.transactionHash}`);
-                
-                // Try to decode the random words from the data
-                if (log.data && log.data !== '0x') {
-                  try {
-                    const abiCoder = hre.ethers.AbiCoder.defaultAbiCoder();
-                    const decodedData = abiCoder.decode(['uint256', 'uint256[]'], log.data);
-                    console.log(`Success payment: ${decodedData[0]}`);
-                    console.log(`Random words: ${decodedData[1]}`);
-                  } catch (e) {
-                    console.log(`Could not decode fulfillment data: ${e}`);
-                  }
-                }
-              }
-            }
+          const house = await consumer.house(signerAddress);
+          console.log(`✅ D20 roll complete!`);
+          console.log(`Your house is: ${house}`);
+        } catch (houseError: any) {
+          if (houseError.message.includes("Dice not rolled")) {
+            console.log(`Dice not rolled yet for this address`);
+          } else if (houseError.message.includes("Roll in progress")) {
+            console.log(`Roll in progress (value = 42), waiting for fulfillment...`);
           } else {
-            console.log(`No recent fulfillment events found`);
+            console.log(`Error checking house: ${houseError.message}`);
           }
-          
-          // Directly check storage slots of the consumer contract
-          console.log(`\n==== DIRECTLY CHECKING CONTRACT STORAGE ====`);
-          
-          // Check the s_randomWords array length (storage slot 0)
-          const randomWordsSlot = "0x0000000000000000000000000000000000000000000000000000000000000000"; // slot 0
-          const randomWordsLengthHex = await provider.send("eth_getStorageAt", [
-            consumerAddress,
-            randomWordsSlot,
-            "latest"
-          ]);
-          
-          console.log(`s_randomWords array length (hex): ${randomWordsLengthHex}`);
-          if (randomWordsLengthHex && randomWordsLengthHex !== "0x") {
-            const arrayLength = parseInt(randomWordsLengthHex, 16);
-            console.log(`s_randomWords array length: ${arrayLength}`);
-            
-            if (arrayLength > 0) {
-              // For dynamic arrays, slot keccak256(slot) contains the first element
-              const arrayDataSlot = hre.ethers.keccak256(randomWordsSlot);
-              console.log(`Array data slot: ${arrayDataSlot}`);
-              
-              const randomWordHex = await provider.send("eth_getStorageAt", [
-                consumerAddress,
-                arrayDataSlot,
-                "latest"
-              ]);
-              
-              console.log(`s_randomWords[0] value (hex): ${randomWordHex}`);
-              if (randomWordHex && randomWordHex !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
-                const randomWord = BigInt(randomWordHex);
-                console.log(`✅ Random word found: ${randomWord}`);
-                console.log(`The VRF request has been successfully fulfilled!`);
-              } else {
-                console.log(`No random word found in storage.`);
-              }
-            }
-          }
-          
-          // Check s_requestId (storage slot 1)
-          const requestIdSlot = "0x0000000000000000000000000000000000000000000000000000000000000001"; // slot 1
-          const storedRequestIdHex = await provider.send("eth_getStorageAt", [
-            consumerAddress,
-            requestIdSlot,
-            "latest"
-          ]);
-          
-          console.log(`s_requestId in contract: ${BigInt(storedRequestIdHex)}`);
-          console.log(`Current requestId from our call: ${requestId}`);
-          
-          // Check s_gasAvailable (storage slot 3)
-          const gasAvailableSlot = "0x0000000000000000000000000000000000000000000000000000000000000003"; // slot 3
-          const gasAvailableHex = await provider.send("eth_getStorageAt", [
-            consumerAddress,
-            gasAvailableSlot,
-            "latest"
-          ]);
-          
-          console.log(`s_gasAvailable (hex): ${gasAvailableHex}`);
-          const gasAvailable = parseInt(gasAvailableHex, 16);
-          console.log(`s_gasAvailable: ${gasAvailable}`);
-          
-          if (gasAvailable > 0) {
-            console.log(`✅ The s_gasAvailable value indicates that fulfillment has occurred!`);
-            console.log(`The VRF request is confirmed to be fulfilled.`);
-          } else {
-            console.log(`The s_gasAvailable is 0, indicating the randomness hasn't been fulfilled yet.`);
-          }
-          
-        } catch (error: any) {
-          console.log(`Error checking request events: ${error.message}`);
         }
         
         console.log(`\n==== STEP 7: Wait for fulfillment ====`);
@@ -866,125 +723,45 @@ task("request-randomness", "Request randomness from a VRF consumer contract")
           await new Promise(resolve => setTimeout(resolve, waitInterval));
           elapsed += waitInterval;
           
+          // Try to check dice roll status via house() function
           try {
-            // First try to get the requestId from the consumer
-            // Use direct storage access instead of contract call
-            const requestIdSlot = "0x0000000000000000000000000000000000000000000000000000000000000001"; // slot 1
-            const storedRequestIdHex = await provider.send("eth_getStorageAt", [
-              consumerAddress,
-              requestIdSlot,
-              "latest"
-            ]);
-            const currentRequestId = BigInt(storedRequestIdHex);
-            console.log(`Current request ID: ${currentRequestId}`);
+            const house = await consumer.house(signerAddress);
+            console.log(`✅ D20 roll complete!`);
+            console.log(`Your house is: ${house}`);
             
-            console.log(`Checking for fulfillment using direct storage access...`);
+            // Look for most recent DiceLanded event to confirm fulfillment
+            const currentBlock = await provider.send("eth_blockNumber", []);
+            const currentBlockNumber = parseInt(currentBlock, 16);
+            const fromBlock = Math.max(currentBlockNumber - 20, 0); // Last 20 blocks
             
-            // Check s_randomWords array length (slot 0)
-            const randomWordsSlot = "0x0000000000000000000000000000000000000000000000000000000000000000"; // slot 0
-            const randomWordsLengthHex = await provider.send("eth_getStorageAt", [
-              consumerAddress,
-              randomWordsSlot,
-              "latest"
-            ]);
+            const diceLandedLogs = await provider.send("eth_getLogs", [{
+              fromBlock: `0x${fromBlock.toString(16)}`,
+              toBlock: "latest",
+              address: consumerAddress,
+              topics: [
+                '0x81fb80c7f8cba4b5a0fa21c9ee5a0dd70cc149bb2d6d5f2512e74c332de7c58d', // DiceLanded event signature
+              ]
+            }]);
             
-            console.log(`s_randomWords array length (hex): ${randomWordsLengthHex}`);
-            const arrayLength = parseInt(randomWordsLengthHex, 16);
-            console.log(`s_randomWords array length: ${arrayLength}`);
-            
-            if (arrayLength > 0) {
-              // For dynamic arrays, slot keccak256(slot) contains the first element
-              const arrayDataSlot = hre.ethers.keccak256(randomWordsSlot);
-              console.log(`Array data slot: ${arrayDataSlot}`);
-              
-              const randomWordHex = await provider.send("eth_getStorageAt", [
-                consumerAddress,
-                arrayDataSlot,
-                "latest"
-              ]);
-              
-              console.log(`s_randomWords[0] value (hex): ${randomWordHex}`);
-              if (randomWordHex && randomWordHex !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
-                const randomWord = BigInt(randomWordHex);
-                console.log(`✅ Random word found: ${randomWord}`);
-                console.log(`The VRF request has been successfully fulfilled!`);
-                return;
-              } else {
-                console.log(`Array slot exists but no value found yet.`);
+            if (diceLandedLogs && diceLandedLogs.length > 0) {
+              for (const log of diceLandedLogs) {
+                const requestIdHex = log.topics[1];
+                console.log(`✅ Found DiceLanded event!`);
+                console.log(`Request ID: ${requestIdHex}`);
+                console.log(`Result: ${parseInt(log.topics[2], 16)}`);
               }
             }
             
-            // Check s_gasAvailable (slot 3) which is set during fulfillment
-            const gasAvailableSlot = "0x0000000000000000000000000000000000000000000000000000000000000003"; // slot 3
-            const gasAvailableHex = await provider.send("eth_getStorageAt", [
-              consumerAddress,
-              gasAvailableSlot,
-              "latest"
-            ]);
-            
-            console.log(`s_gasAvailable (hex): ${gasAvailableHex}`);
-            const gasAvailable = parseInt(gasAvailableHex, 16);
-            console.log(`s_gasAvailable: ${gasAvailable}`);
-            
-            if (gasAvailable > 0) {
-              console.log(`✅ The s_gasAvailable value is ${gasAvailable}, which indicates fulfillment occurred`);
-              console.log(`Fulfillment happened but randomness might not be stored correctly.`);
-              
-              // Check recent events for this request ID
-              console.log(`Checking for fulfillment events...`);
-              
-              // Get current block
-              const currentBlock = await provider.send("eth_blockNumber", []);
-              const currentBlockNumber = parseInt(currentBlock, 16);
-              
-              // Look for fulfillment events in recent blocks
-              const fromBlock = Math.max(currentBlockNumber - 20, 0); // Last 20 blocks
-              
-              const fulfillmentLogs = await provider.send("eth_getLogs", [{
-                fromBlock: `0x${fromBlock.toString(16)}`,
-                toBlock: "latest",
-                address: coordinatorAddress,
-                topics: [
-                  '0x7dffc5ae5ee4e2e4df1651cf6ad329a73cebdb728f38e8f424e4c59c26a345e5', // RandomWordsFulfilled event signature
-                ]
-              }]);
-              
-              if (fulfillmentLogs && fulfillmentLogs.length > 0) {
-                console.log(`Found ${fulfillmentLogs.length} fulfillment events in recent blocks`);
-                
-                // Create requestId hex with proper padding
-                const requestIdHex = `0x${requestId.toString(16).padStart(64, '0')}`;
-                
-                for (const log of fulfillmentLogs) {
-                  if (log.topics.length > 1 && log.topics[1] === requestIdHex) {
-                    console.log(`✅ Found fulfillment event for our request!`);
-                    
-                    // Try to decode data
-                    try {
-                      const abiCoder = hre.ethers.AbiCoder.defaultAbiCoder();
-                      const decodedData = abiCoder.decode(['uint256', 'uint256[]'], log.data);
-                      console.log(`Success payment: ${decodedData[0]}`);
-                      console.log(`Random words from event: ${decodedData[1]}`);
-                    } catch (e) {
-                      console.log(`Could not decode event data: ${e}`);
-                    }
-                    
-                    return;
-                  }
-                }
-                
-                console.log(`No events matching our request ID`);
-              } else {
-                console.log(`No fulfillment events found in recent blocks`);
-              }
-              
-              // If s_gasAvailable is set but we couldn't find the random word, we'll consider it fulfilled
-              console.log(`Fulfillment likely occurred based on s_gasAvailable > 0`);
-              return;
+            // Success! Exit the loop
+            return;
+          } catch (houseError: any) {
+            if (houseError.message.includes("Dice not rolled")) {
+              console.log(`Dice not rolled yet for this address`);
+            } else if (houseError.message.includes("Roll in progress")) {
+              console.log(`Roll in progress (value = 42), still waiting...`);
+            } else {
+              console.log(`Error checking house: ${houseError.message}`);
             }
-            
-          } catch (error: any) {
-            console.log(`Error checking fulfillment: ${error.message}`);
           }
           
           console.log(`Still waiting... ${elapsed / 1000}s elapsed`);
